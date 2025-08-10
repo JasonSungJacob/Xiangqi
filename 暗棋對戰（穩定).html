@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>暗棋對戰（人機版）v3.3</title>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827ee;
+      --board:#1f2937;
+      --grid:#374151;
+      --gold:#f59e0b;
+      --muted:#94a3b8;
+      --accent:#22c55e;
+    }
+    html,body{height:100%}
+    body{margin:0;background:radial-gradient(1200px 800px at 80% -10%,#1e293b 0%, #0b1222 60%, #050816 100%) fixed;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans",sans-serif;color:#e5e7eb}
+    .app{max-width:1100px;margin:24px auto;padding:16px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+    .title{font-weight:800;letter-spacing:.5px;font-size:clamp(18px,2.2vw,28px)}
+    .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    button, select{background:#0b1222;color:#e5e7eb;border:1px solid #1f2a44;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;transition:.2s}
+    button:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(0,0,0,.35)}
+    .panel{background:var(--panel);backdrop-filter: blur(8px);border:1px solid #1f2937;padding:12px 14px;border-radius:16px}
+
+    .layout{display:grid;grid-template-columns: 1fr 420px;gap:14px}
+    @media (max-width: 980px){.layout{grid-template-columns:1fr}}
+
+    .board-wrap{display:flex;justify-content:center}
+    .board{user-select:none;display:grid;grid-template-columns:repeat(8,64px);grid-template-rows:repeat(4,64px);gap:8px;background:linear-gradient(180deg,#121a2d,#0e1628);padding:14px;border-radius:18px;border:1px solid #1f2937;box-shadow: inset 0 0 0 1px #0b1324, 0 20px 40px rgba(0,0,0,.45)}
+    .cell{width:64px;height:64px;background:var(--board);border-radius:14px;display:grid;place-items:center;position:relative;outline:1px solid #121a2d;box-shadow:inset 0 0 0 1px var(--grid)}
+    .cell.flip-hint::after{content:"翻";position:absolute;inset:auto 8px 8px auto;font-size:11px;color:#67e8f9;opacity:.7}
+
+    .piece{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;font-weight:900;letter-spacing:.06em;border:2px solid #111827;box-shadow:0 10px 16px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.06)}
+    .piece.hidden{background:linear-gradient(180deg,#0b3840,#092d34);color:#bff3ff;border-color:#0ea5a4;box-shadow:0 10px 16px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.06), 0 0 0 2px rgba(14,165,233,.35)}
+    .piece.red{background:linear-gradient(180deg,#7f1d1d,#b91c1c);color:#fee2e2}
+    .piece.black{background:linear-gradient(180deg,#0f172a,#1f2937);color:#f1f5f9}
+    .abbr{font-size:20px}
+
+    .moveable{box-shadow:0 0 0 3px rgba(34,197,94,.25), 0 0 14px rgba(34,197,94,.2)}
+    .selected{box-shadow:0 0 0 3px rgba(245,158,11,.35), 0 0 14px rgba(245,158,11,.2)}
+
+    .side-panel h3{margin:0 0 8px;font-size:16px;letter-spacing:.3px;color:#cbd5e1}
+    .log{height:300px;overflow:auto;border-radius:12px;background:rgba(2,6,23,.55);border:1px solid #0b1324;padding:8px}
+    .log p{margin:4px 0;font-size:13px;color:#cbd5e1}
+    .badge{font-size:12px;border-radius:999px;padding:4px 8px;background:#0b1324;border:1px solid #1f2a44;color:#cbd5e1}
+    .meter{height:10px;background:#0b1324;border-radius:999px;border:1px solid #1f2a44;overflow:hidden}
+    .meter > div{height:100%;background:linear-gradient(90deg,#10b981,#06b6d4);width:0}
+    .hint{color:#94a3b8;font-size:13px}
+    .legend{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;color:#cbd5e1}
+    .legend .card{background:rgba(2,6,23,.55);padding:8px;border:1px solid #0b1324;border-radius:12px}
+    .legend strong{color:#e5e7eb}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="panel">
+      <div class="title">暗棋對戰（人機版）<span class="badge" id="ver">v3.3</span></div>
+      <div class="controls">
+        <label class="badge">難度
+          <select id="level">
+            <option value="1">簡單</option>
+            <option value="2" selected>一般</option>
+            <option value="3">困難</option>
+          </select>
+        </label>
+        <label class="badge">我方顏色
+          <select id="sidePick">
+            <option value="auto" selected>自動（首翻決定）</option>
+            <option value="red">紅方</option>
+            <option value="black">黑方</option>
+          </select>
+        </label>
+        <button id="new">新對局</button>
+        <button id="undo">悔棋</button>
+        <span class="badge" id="sideBadge">尚未分配陣營</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <div class="board-wrap">
+        <div class="board" id="board" aria-label="4x8 暗棋棋盤"></div>
+      </div>
+      <div class="side-panel panel">
+        <h3>對局資訊</h3>
+        <p class="hint" id="status">請先點任一蓋住的棋子翻面。可在上方選擇我方紅/黑；若選自動，第一枚翻開的棋子決定你的顏色。</p>
+        <div class="meter" aria-label="AI 思考中顯示">
+          <div id="thinkingBar"></div>
+        </div>
+        <h3 style="margin-top:10px">行棋記錄</h3>
+        <div class="log" id="log" aria-live="polite"></div>
+        <div class="legend" style="margin-top:10px">
+          <div class="card"><strong>黑棋字樣</strong><br>將、士、象、車、馬、包、卒</div>
+          <div class="card"><strong>紅棋字樣</strong><br>帥、仕、相、俥、傌、炮、兵</div>
+          <div class="card" style="grid-column:1 / span 2"><strong>吃子規則</strong><br>將/帥 ＞ 士/仕 ＞ 象/相 ＞ 車/俥 ＞ 馬/傌 ＞ 包/炮 ＞ 卒/兵（同級可互吃）。包/炮：不吃只走一步；吃子需隔一子（屏風）。<br><strong>勝利條件：</strong>吃光對方全部棋子。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // --- 棋盤與常數 ---
+  const R = 4, C = 8; // 4行8列
+  const RED = 'red', BLACK = 'black';
+  const TYPES = ['K','A','E','R','N','C','S']; // 將/帥, 士/仕, 象/相, 車/俥, 馬/傌, 包/炮, 卒/兵
+  // 階級（大吃小，同級互吃）
+  const RANK = { K:6, A:5, E:4, R:3, N:2, C:1, S:0 };
+  const NAME_RED   = { K:'帥', A:'仕', E:'相', R:'俥', N:'傌', C:'炮', S:'兵' };
+  const NAME_BLACK = { K:'將', A:'士', E:'象', R:'車', N:'馬', C:'包', S:'卒' };
+
+  // ★ 吃子規則（最小特例）：
+  //   - 允許：兵/卒 可吃 將/帥
+  //   - 禁止：將/帥 吃 兵/卒
+  //   - 其他：依 RANK 大吃小，同級可互吃
+  function canCapture(att, def){
+    if(!att || !def) return false;
+    if(att.color === def.color) return false;
+    if(!def.up) return false;
+    // 允許：S -> K
+    if(att.type==='S' && def.type==='K') return true;
+    // 禁止：K -> S
+    if(att.type==='K' && def.type==='S') return false;
+    // 其餘依等級
+    return RANK[att.type] >= RANK[def.type];
+  }
+
+  // 狀態
+  let board = [];           // 每格: {type,color,up:boolean}
+  let side = null;          // 玩家顏色
+  let preferred = 'auto';   // 使用者指定的顏色
+  let turn = RED;           // 輪到誰
+  let history = [];
+  let gameOver = false;
+
+  // UI 節點
+  const elBoard = document.getElementById('board');
+  const elStatus = document.getElementById('status');
+  const elLog = document.getElementById('log');
+  const elSide = document.getElementById('sideBadge');
+  const elLevel = document.getElementById('level');
+  const elSidePick = document.getElementById('sidePick');
+  const bar = document.getElementById('thinkingBar');
+
+  elSidePick.addEventListener('change', () => {
+    preferred = elSidePick.value; 
+    if(preferred==='red' || preferred==='black'){
+      side = preferred; // 直接鎖定我方
+      updateSideBadge();
+      setStatus(`你選擇了${side===RED?'紅':'黑'}方，可翻子開始。`);
+    } else {
+      side = null; // 回到首翻決定
+      updateSideBadge();
+      setStatus('自動模式：首翻決定你方顏色。');
+    }
+  });
+
+  function updateSideBadge(){
+    if(!side){ elSide.textContent='尚未分配陣營'; elSide.style.background='#0b1324'; return; }
+    elSide.textContent = `你方：${side===RED?'紅':'黑'}`;
+    elSide.style.background = side===RED? '#7f1d1d' : '#111827';
+  }
+
+  function log(t){ const p=document.createElement('p'); p.textContent=t; elLog.prepend(p); }
+
+  function newGame(){
+    // 生成 32 枚棋並隨機佈局（全部蓋住）
+    const bag = [];
+    for(const color of [RED,BLACK]){
+      bag.push({type:'K',color});                  // 1
+      for(let i=0;i<2;i++) bag.push({type:'A',color}); // 2
+      for(let i=0;i<2;i++) bag.push({type:'E',color}); // 2
+      for(let i=0;i<2;i++) bag.push({type:'R',color}); // 2
+      for(let i=0;i<2;i++) bag.push({type:'N',color}); // 2
+      for(let i=0;i<2;i++) bag.push({type:'C',color}); // 2（包/炮）
+      for(let i=0;i<5;i++) bag.push({type:'S',color}); // 5（卒/兵）
+    }
+    for(let i=bag.length-1;i>0;i--){const j=(Math.random()*(i+1))|0; [bag[i],bag[j]]=[bag[j],bag[i]]}
+    board = new Array(R*C).fill(null).map((_,i)=> ({...bag[i], up:false}));
+    history=[]; gameOver=false; turn=RED;
+    // 顏色初始化
+    if(preferred==='red' || preferred==='black') side = preferred; else side=null;
+    render(); elLog.innerHTML='';
+    updateSideBadge();
+    setStatus(side? `你方為${side===RED?'紅':'黑'}，請先翻子。` : '請先翻任一子開始（首翻決定顏色）。');
+
+    // 若由電腦先手（例如你選非先手或尚未決定顏色），立即觸發 AI
+    if (turn !== side) { setTimeout(aiTurn, 160); }
+  }
+
+  function idx(r,c){ return r*C+c; }
+  function rc(i){ return [ (i/C)|0, i% C ]; }
+  function inBoard(r,c){ return r>=0 && r<R && c>=0 && c<C; }
+
+  function pieceChar(p){ return (p.color===RED? NAME_RED[p.type] : NAME_BLACK[p.type]); }
+
+  function render(){
+    elBoard.innerHTML='';
+    for(let r=0;r<R;r++){
+      for(let c=0;c<C;c++){
+        const i = idx(r,c); const cell = document.createElement('div');
+        cell.className='cell'; cell.dataset.i=i;
+        const p = board[i];
+        if(p){
+          const d = document.createElement('div'); d.className='piece';
+          const ab = document.createElement('div'); ab.className='abbr';
+          if(!p.up){ d.classList.add('hidden'); cell.classList.add('flip-hint'); ab.textContent='？'; }
+          else { d.classList.add(p.color); ab.textContent = pieceChar(p); }
+          d.appendChild(ab); cell.appendChild(d);
+        }
+        elBoard.appendChild(cell);
+      }
+    }
+  }
+
+  function setStatus(t){ elStatus.textContent=t; }
+
+  function flip(i){
+    const p = board[i]; if(!p || p.up) return false;
+    history.push({type:'flip', i}); p.up = true;
+    if(!side && preferred==='auto'){ side = p.color; updateSideBadge(); }
+    log(`${turn===RED?'紅':'黑'}方翻開了「${pieceChar(p)}」`);
+    render();
+    advanceTurn();
+    return true;
+  }
+
+  const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+
+  function movesFrom(i){
+    const res = []; const p = board[i]; if(!p || !p.up) return res;
+    if(p.type !== 'C'){
+      for(const [dr,dc] of DIRS){
+        const [r,c]=rc(i); const r2=r+dr,c2=c+dc; if(!inBoard(r2,c2)) continue;
+        const j=idx(r2,c2); const q=board[j];
+        if(!q){ res.push({from:i,to:j}); }
+        else if(q.up && q.color!==p.color && canCapture(p,q)){ res.push({from:i,to:j}); }
+      }
+    } else {
+      // 包/炮：不吃只能走一步；吃子需隔一子（可跨距離）
+      // 非吃：四方向相鄰一格且為空
+      for (const [dr, dc] of DIRS) {
+        const [r, c] = rc(i);
+        const r2 = r + dr, c2 = c + dc;
+        if (!inBoard(r2, c2)) continue;
+        const j = idx(r2, c2);
+        if (!board[j]) res.push({ from: i, to: j });
+      }
+      // 吃：必須隔一個「屏風」，之後遇到第一個棋子若為敵且已翻面即可吃
+      for (const [dr, dc] of DIRS) {
+        let [r, c] = rc(i);
+        let screened = false;
+        while (true) {
+          r += dr; c += dc; if (!inBoard(r, c)) break;
+          const j = idx(r, c); const q = board[j];
+          if (!screened) {
+            if (!q) continue; // 還沒遇到屏風，持續前進
+            screened = true; // 第一次遇到棋子，作為屏風
+            continue;
+          }
+          // 已有屏風後，直到遇到第一個棋子才可判定
+          if (!q) continue; // 屏風後仍是空格，繼續找
+          if (q.up && q.color !== p.color) res.push({ from: i, to: j, cannon: true });
+          break; // 無論能否吃，遇到第一子就停
+        }
+      }
+    }
+    return res;
+  }
+
+  function allMoves(color){
+    if(gameOver) return [];
+    const mv=[];
+    for(let i=0;i<board.length;i++){ const p=board[i]; if(p && !p.up) mv.push({flip:i}); }
+    for(let i=0;i<board.length;i++){
+      const p=board[i]; if(!p || !p.up || p.color!==color) continue;
+      for(const m of movesFrom(i)) mv.push(m);
+    }
+    return mv;
+  }
+
+  function makeMove(m){
+    if(m.flip!==undefined) return flip(m.flip);
+    const {from,to} = m; const a=board[from]; if(!a) return false;
+    const snap = { type:'move', from, to, cap: board[to] ? {...board[to]} : null };
+    history.push(snap); board[to] = a; board[from] = null;
+    log(`${turn===RED?'紅':'黑'}方：${coord(from)}→${coord(to)} ${snap.cap?`吃「${pieceChar(snap.cap)}」`:''}`);
+    render(); advanceTurn(); return true;
+  }
+
+  function undo(){
+    if(history.length===0 || gameOver) return;
+    const last = history.pop();
+    if(last.type==='flip'){
+      board[last.i].up=false;
+      turn = opponent(turn);
+    } else if(last.type==='move'){
+      const piece = board[last.to]; board[last.from]=piece; board[last.to]= last.cap ? {...last.cap} : null; turn = opponent(turn);
+    }
+    render(); setStatus('悔棋成功。');
+  }
+
+  function coord(i){ const [r,c]=rc(i); return `${r+1}-${c+1}`; }
+  const opponent = (c)=> c===RED?BLACK:RED;
+
+  function checkWin(){
+    // 新規則：吃光對方所有棋子才算勝利（含未翻）
+    const hasRed = board.some(p=>p&&p.color===RED);
+    const hasBlack = board.some(p=>p&&p.color===BLACK);
+    if(!hasRed) return BLACK;
+    if(!hasBlack) return RED;
+    return null;
+  }
+
+  function advanceTurn(){
+    const w = checkWin(); if(w){ gameOver=true; setStatus(`${w===side?'你勝利！':'你落敗'}（${w===RED?'紅':'黑'}方勝）`); log(`對局結束：${w===RED?'紅':'黑'}方勝。`); return; }
+    turn = opponent(turn);
+    setStatus(`${turn===side? '輪到你' : '電腦思考中…'}`);
+    if(turn!==side){ setTimeout(aiTurn, 160); }
+  }
+
+  // --- AI（Alpha-Beta，翻子抽樣） ---
+  function aiTurn(){
+    pulse(true);
+    const depth = parseInt(elLevel.value,10)+1; // 2/3/4
+    const start = performance.now();
+    const best = searchBest(board, turn, depth, -1e9, 1e9);
+    pulse(false);
+    if(best && best.move){
+      if(best.move.flip!==undefined) flip(best.move.flip); else makeMove(best.move);
+    } else {
+      const mv = allMoves(turn); if(mv.length) makeMove(mv[0]); else { gameOver=true; setStatus('無著可走。'); }
+    }
+    const ms = Math.max(1, (performance.now()-start)|0);
+    log(`AI 用時 ${ms}ms，估值 ${best?best.score:'N/A'}`);
+  }
+
+  function cloneBoard(src){ return src.map(p=> p? ({...p}) : null ); }
+
+  function searchBest(bd, color, depth, alpha, beta){
+    if(depth===0) return {score: evaluate(bd, color)};
+    const moves = allMovesColor(bd, color);
+    if(moves.length===0) return {score: -999999};
+    let best=null;
+    moves.sort((a,b)=> scoreMove(bd,b)-scoreMove(bd,a));
+    for(const m of moves){
+      const bd2 = simulate(bd, m);
+      const val = - searchBest(bd2, opponent(color), depth-1, -beta, -alpha).score;
+      if(!best || val>best.score) best={score:val, move:m};
+      if(val>alpha) alpha=val; if(alpha>=beta) break;
+    }
+    return best;
+  }
+
+  function allMovesColor(bd, color){
+    const mv=[]; const flips=[];
+    for(let i=0;i<bd.length;i++){ const p=bd[i]; if(p && !p.up) flips.push({flip:i}); }
+    if(flips.length){ shuffleInPlace(flips); mv.push(...flips.slice(0,6)); }
+    for(let i=0;i<bd.length;i++){
+      const p=bd[i]; if(!p || !p.up || p.color!==color) continue;
+      const ms = movesFromBoard(bd,i); for(const m of ms) mv.push(m);
+    }
+    return mv;
+  }
+
+  function movesFromBoard(bd,i){
+    const out=[]; const p=bd[i]; if(!p || !p.up) return out; const DIRS=[[1,0],[ -1,0],[0,1],[0,-1]];
+    const inB=(r,c)=> r>=0&&r<R&&c>=0&&c<C; const id=(r,c)=> r*C+c; const RC=(k)=>[(k/C)|0,k%C];
+    if(p.type!=='C'){
+      for(const [dr,dc] of DIRS){ const [r,c]=RC(i); const r2=r+dr,c2=c+dc; if(!inB(r2,c2)) continue; const j=id(r2,c2); const q=bd[j]; if(!q) out.push({from:i,to:j}); else if(q.up && q.color!==p.color && canCapture(p,q)) out.push({from:i,to:j}); }
+    } else {
+      // 包/炮：不吃只能走一步；吃子需隔一子（可跨距離）
+      // 非吃一步
+      for(const [dr,dc] of DIRS){ const [r,c]=RC(i); const r2=r+dr,c2=c+dc; if(!inB(r2,c2)) continue; const j=id(r2,c2); if(!bd[j]) out.push({from:i,to:j}); }
+      // 吃子（隔一子）
+      for(const [dr,dc] of DIRS){ let [r,c]=RC(i); let screened=false; while(true){ r+=dr; c+=dc; if(!inB(r,c)) break; const j=id(r,c); const q=bd[j]; if(!screened){ if(!q) continue; screened=true; continue; } if(!q) continue; if(q.up && q.color!==p.color) out.push({from:i,to:j,cannon:true}); break; } }
+    }
+    return out;
+  }
+
+  function simulate(bd, m){
+    const b2 = cloneBoard(bd);
+    if(m.flip!==undefined){ b2[m.flip] = {...b2[m.flip], up:true}; return b2; }
+    const a = b2[m.from]; b2[m.to] = a; b2[m.from]=null; return b2;
+  }
+
+  function evaluate(bd, pov){
+    // 物質分 + 機動性
+    let r=0,b=0, rMob=0,bMob=0;
+    for(let i=0;i<bd.length;i++){
+      const p=bd[i]; if(!p) continue;
+      if(p.up){ if(p.color===RED) r+= RANK[p.type]*100; else b+= RANK[p.type]*100; const ms=movesFromBoard(bd,i).length; if(p.color===RED) rMob+=ms; else bMob+=ms; }
+      else { if(p.color===RED) r+= 50; else b+=50; }
+    }
+    const mat = (pov===RED? (r-b) : (b-r));
+    const mob = (pov===RED? (rMob-bMob) : (bMob-rMob));
+    return mat + mob*6;
+  }
+
+  function scoreMove(bd,m){ if(m.flip!==undefined) return 20; const q = bd[m.to]; if(q && q.up) return 1000 + RANK[q.type]*100; return 0; }
+  function shuffleInPlace(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } }
+
+  // 互動
+  elBoard.addEventListener('click', e=>{
+    if(gameOver) return;
+    const cell = e.target.closest('.cell'); if(!cell) return; const i = +cell.dataset.i; const p = board[i];
+    // 先處理翻面：若還沒決定顏色或輪到玩家，都允許翻
+    if(p && !p.up){
+      if(side===null || turn===side){ flip(i); }
+      else { setStatus('等電腦走完喔～'); }
+      return;
+    }
+    if(turn!==side){ setStatus('等電腦走完喔～'); return; }
+
+    const sel = document.querySelector('.cell.selected');
+    if(sel){
+      const from = +sel.dataset.i; const legal = movesFrom(from).some(m=> m.to===i);
+      if(legal){ makeMove({from,to:i}); clearSelection(); return; }
+      clearSelection();
+    } else {
+      if(p && p.up && p.color===side){
+        cell.classList.add('selected');
+        for(const m of movesFrom(i)){
+          const n = elBoard.querySelector(`.cell[data-i="${m.to}"]`); if(n) n.classList.add('moveable');
+        }
+      }
+    }
+  });
+
+  function clearSelection(){ elBoard.querySelectorAll('.selected,.moveable').forEach(el=> el.classList.remove('selected','moveable')); }
+  document.getElementById('new').addEventListener('click', newGame);
+  document.getElementById('undo').addEventListener('click', ()=>{ undo(); clearSelection(); });
+  function pulse(on){ bar.style.transition='width .2s'; bar.style.width = on? '100%':'0%'; if(!on){ setTimeout(()=> bar.style.transition='none', 250); } }
+
+  // 初始化
+  newGame();
+})();
+</script>
+</body>
+</html>
